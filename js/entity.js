@@ -22,13 +22,11 @@ var upgradeList = {};
 var bulletList = {};
 var player;
 
-Entity = function(type,x,spdX,y,spdY,name,id,width,height,img){
+Entity = function(type,x,y,name,id,width,height,img){
   var self = {
     type:type,
     x:x,
-    spdX:spdX,
     y:y,
-    spdY:spdY,
     name:name,
     id:id,
     width : width,
@@ -36,20 +34,7 @@ Entity = function(type,x,spdX,y,spdY,name,id,width,height,img){
     img:img
   };
   self.update = function () {
-    self.updatePosition();
     self.draw();
-  };
-  self.updatePosition = function(){
-    self.x+=self.spdX;
-    self.y+=self.spdY;
-
-
-    if(self.x>currentMap.width || self.x<0){
-      self.spdX=-self.spdX;
-    }
-    if(self.y>currentMap.height || self.y<0){
-      self.spdY=-self.spdY;
-    }
   };
   self.draw = function(){
       ctx.save();
@@ -92,8 +77,44 @@ Entity = function(type,x,spdX,y,spdY,name,id,width,height,img){
   return self;
 };
 
-Actor = function(entity_name,x,spdX,y,spdY,name,id,width,height,img,hp,aimAngle){
-  var self = Entity(entity_name,x,spdX,y,spdY,name,id,width,height,img);
+enemy = function (id,x,y,name,width,height) { // attributes as passed during creation
+
+  var self = Actor('enemy',x,y,name,id,width,height,Img.enemy,10,0);
+
+  self.updateAimAngle = function() {
+    var difX = -self.x + player.x;
+    var difY = -self.y + player.y;
+    self.aimAngle = ( Math.atan2(difY,difX) / Math.PI) * 180;
+  }
+
+  self.updatePosition = function(){
+    if(self.x > player.x)
+      self.x-=3;
+    else
+      self.x+=3;
+    if(self.y > player.y)
+      self.y-=3;
+    else
+      self.y+=3;
+  }
+  var super_update =self.update;
+  self.update = function() {
+    self.updateAimAngle();
+    self.updatePosition();
+    super_update();
+    self.performAttack();
+
+    var isColliding = player.testCollision(self);
+    if(isColliding){
+      player.hp-=1;
+    }
+  };
+
+  enemyList[id]=self;
+};
+
+Actor = function(entity_name,x,y,name,id,width,height,img,hp,aimAngle){
+  var self = Entity(entity_name,x,y,name,id,width,height,img);
 
   self.hp=hp;
   self.aimAngle=aimAngle;
@@ -124,25 +145,9 @@ Actor = function(entity_name,x,spdX,y,spdY,name,id,width,height,img,hp,aimAngle)
   return self;
 }
 
-enemy = function (id,x,y,spdX,spdY,name,width,height) { // attributes as passed during creation
-  var self = Actor('enemy',x,spdX,y,spdY,name,id,width,height,Img.enemy,10,0);
 
-  var super_update =self.update;
-  self.update = function() {
-    super_update();
-    self.performAttack();
-
-    var isColliding = player.testCollision(self);
-    if(isColliding){
-      player.hp-=1;
-    }
-  };
-
-  enemyList[id]=self;
-};
-
-Upgrade = function (id,x,y,spdX,spdY,name,width,height,category,img) {
-  var self = Entity('upgrade',x,spdX,y,spdY,name,id,width,height,img);
+Upgrade = function (id,x,y,name,width,height,category,img) {
+  var self = Entity('upgrade',x,y,name,id,width,height,img);
   self.category=category;
   var super_update = self.update;
   self.update = function() {
@@ -162,11 +167,27 @@ Upgrade = function (id,x,y,spdX,spdY,name,width,height,category,img) {
 };
 
 Bullet = function (id,x,y,spdX,spdY,name,width,height,combatType) {
-  var self = Entity('bullet',x,spdX,y,spdY,name,id,width,height,Img.bullet);
+  var self = Entity('bullet',x,y,name,id,width,height,Img.bullet);
   self.timer=0;
+  self.spdX = spdX;
+  self.spdY = spdY;
   self.combatType = combatType;
+  self.updatePosition = function(){
+    self.x+=self.spdX;
+    self.y+=self.spdY;
+
+
+    if(self.x>currentMap.width || self.x<0){
+      self.spdX=-self.spdX;
+    }
+    if(self.y>currentMap.height || self.y<0){
+      self.spdY=-self.spdY;
+    }
+  };
   var super_update = self.update;
+
   self.update = function() {
+    self.updatePosition();
     super_update();
     var toRemove = false;
     self.timer++;
@@ -233,7 +254,7 @@ update = function (){
 };
 
 Player = function() {
-  var self = Actor('player',50,30,40,5,'P',undefined,50,70,Img.player,10,1);
+  var self = Actor('player',50,40,'P',undefined,50,70,Img.player,10,1);
 
   self.updatePosition = function() {
     if(self.pressingRight)
@@ -256,6 +277,7 @@ Player = function() {
   };
   var super_update = self.update;
   self.update= function() {
+    self.updatePosition();
     super_update();
     if(self.hp <= 0){
       var timeSurvived = Date.now() - timeWhenGameStarted;
@@ -273,7 +295,7 @@ Player = function() {
 
 
 startNewGame = function() {
-  player.hp = 10;
+  player.hp = 1000;
   score=0;
   timeWhenGameStarted = Date.now();
   frameCount=0;
@@ -291,9 +313,7 @@ randomlyGenerateEnemy = function() {
   var height = 64;
   var width = 64;
   var id = Math.random();
-  var spdX = 5 + Math.random()*5;
-  var spdY= 5 + Math.random()*5;
-  enemy(id,x,y,spdX,spdY,'E',width,height);
+  enemy(id,x,y,'E',width,height);
 };
 
 randomlyGenerateBullet = function(actor,overWriteAngle) {
@@ -302,7 +322,6 @@ randomlyGenerateBullet = function(actor,overWriteAngle) {
   var height = 32 ;
   var width = 32 ;
   var id = Math.random();
-
   var angle = actor.aimAngle;
   if(overWriteAngle !== undefined){
     angle = overWriteAngle;
@@ -318,8 +337,6 @@ randomlyGenerateUpgrade = function() {
   var height = 32 ;
   var width = 32 ;
   var id = Math.random();
-  var spdX = 0;
-  var spdY= 0;
 
   if(Math.random() < 0.5){
     var category = 'score';
@@ -329,7 +346,7 @@ randomlyGenerateUpgrade = function() {
     var img = Img.upgrade2;
   }
 
-  Upgrade(id,x,y,spdX,spdY,'U',width,height,category,img);
+  Upgrade(id,x,y,'U',width,height,category,img);
 };
 
 document.onclick = function(mouse) {
